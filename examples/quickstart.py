@@ -15,7 +15,7 @@ rlm = RLM(
         "model_name": "gpt-5-nano",
         "api_key": os.getenv("OPENAI_API_KEY"),
     },
-    environment="docker",
+    environment="local",
     environment_kwargs={},
     max_depth=1,
     logger=logger,
