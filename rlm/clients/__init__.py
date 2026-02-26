@@ -10,12 +10,14 @@ load_dotenv()
 
 def get_client(
     backend: ClientBackend,
-    backend_kwargs: dict[str, Any],
+    backend_kwargs: dict[str, Any] | None = None,
 ) -> BaseLM:
     """
     Routes a specific backend and the args (as a dict) to the appropriate client if supported.
     Currently supported backends: ['openai']
     """
+    if backend_kwargs is None:
+        backend_kwargs = {}
     if backend == "openai":
         from rlm.clients.openai import OpenAIClient
 

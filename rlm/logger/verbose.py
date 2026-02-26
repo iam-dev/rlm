@@ -1,6 +1,5 @@
 """
-Verbose printing for RLM using rich. Modify this however you please :)
-I was mainly using this for debugging, and a lot of it is vibe-coded.
+Verbose printing for RLM using rich.
 
 Provides console output for debugging and understanding RLM execution.
 Uses a "Tokyo Night" inspired color theme.

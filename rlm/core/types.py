@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from types import ModuleType
 from typing import Any, Literal
@@ -61,9 +62,9 @@ class ModelUsageSummary:
     @classmethod
     def from_dict(cls, data: dict) -> "ModelUsageSummary":
         return cls(
-            total_calls=data.get("total_calls"),
-            total_input_tokens=data.get("total_input_tokens"),
-            total_output_tokens=data.get("total_output_tokens"),
+            total_calls=data.get("total_calls", 0),
+            total_input_tokens=data.get("total_input_tokens", 0),
+            total_output_tokens=data.get("total_output_tokens", 0),
             total_cost=data.get("total_cost"),
         )
 
@@ -143,12 +144,18 @@ class RLMChatCompletion:
 
     @classmethod
     def from_dict(cls, data: dict) -> "RLMChatCompletion":
+        usage_data = data.get("usage_summary")
+        usage_summary = (
+            UsageSummary.from_dict(usage_data)
+            if usage_data is not None
+            else UsageSummary(model_usage_summaries={})
+        )
         return cls(
-            root_model=data.get("root_model"),
-            prompt=data.get("prompt"),
-            response=data.get("response"),
-            usage_summary=UsageSummary.from_dict(data.get("usage_summary")),
-            execution_time=data.get("execution_time"),
+            root_model=data.get("root_model", ""),
+            prompt=data.get("prompt", ""),
+            response=data.get("response", ""),
+            usage_summary=usage_summary,
+            execution_time=data.get("execution_time", 0.0),
             metadata=data.get("metadata"),
         )
 
@@ -158,8 +165,8 @@ class REPLResult:
     stdout: str
     stderr: str
     locals: dict
-    execution_time: float
-    llm_calls: list["RLMChatCompletion"]
+    execution_time: float | None
+    rlm_calls: list["RLMChatCompletion"]
     final_answer: str | None = None
 
     def __init__(
@@ -167,8 +174,8 @@ class REPLResult:
         stdout: str,
         stderr: str,
         locals: dict,
-        execution_time: float = None,
-        rlm_calls: list["RLMChatCompletion"] = None,
+        execution_time: float | None = None,
+        rlm_calls: list["RLMChatCompletion"] | None = None,
         final_answer: str | None = None,
     ):
         self.stdout = stdout
@@ -275,8 +282,6 @@ class QueryMetadata:
                     self.context_lengths.append(len(chunk))
                     continue
                 try:
-                    import json
-
                     self.context_lengths.append(len(json.dumps(chunk, default=str)))
                 except Exception:
                     self.context_lengths.append(len(repr(chunk)))
@@ -292,8 +297,6 @@ class QueryMetadata:
                     self.context_lengths = []
                     for chunk in prompt:
                         try:
-                            import json
-
                             self.context_lengths.append(len(json.dumps(chunk, default=str)))
                         except Exception:
                             self.context_lengths.append(len(repr(chunk)))

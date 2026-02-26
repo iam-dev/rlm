@@ -293,7 +293,14 @@ class RLM:
         self._best_partial_answer = None
         # If we're at max depth, the RLM is an LM, so we fallback to the regular LM.
         if self.depth >= self.max_depth:
-            return self._fallback_answer(prompt)
+            fallback_response = self._fallback_answer(prompt)
+            return RLMChatCompletion(
+                root_model=self.backend_kwargs.get("model_name", "unknown"),
+                prompt=prompt,
+                response=fallback_response,
+                usage_summary=UsageSummary(model_usage_summaries={}),
+                execution_time=time.perf_counter() - time_start,
+            )
 
         if self.logger:
             self.logger.clear_iterations()
@@ -616,7 +623,7 @@ class RLM:
         """
         current_prompt = message_history + [
             {
-                "role": "assistant",
+                "role": "user",
                 "content": "Please provide a final answer to the user's question based on the information provided.",
             }
         ]
@@ -634,10 +641,15 @@ class RLM:
 
         return response
 
-    def _fallback_answer(self, message: str | dict[str, Any]) -> str:
+    def _fallback_answer(
+        self, message: str | dict[str, Any], lm_handler: LMHandler | None = None
+    ) -> str:
         """
         Fallback behavior if the RLM is actually at max depth, and should be treated as an LM.
+        Uses the existing lm_handler if available so token usage is tracked.
         """
+        if lm_handler is not None:
+            return lm_handler.completion(message)
         client: BaseLM = get_client(self.backend, self.backend_kwargs)
         response = client.completion(message)
         return response
