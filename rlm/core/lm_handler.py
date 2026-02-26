@@ -209,16 +209,13 @@ class LMHandler:
         return False
 
     def get_usage_summary(self) -> UsageSummary:
-        """Get the usage summary for all clients, merged into a single dict."""
+        """Get the usage summary for all registered clients, merged into a single dict.
+
+        Note: default_client and other_backend_client are already in self.clients
+        (added via register_client), so we only iterate self.clients to avoid
+        double-counting.
+        """
         merged = {}
-        # Include default client
-        default_summary = self.default_client.get_usage_summary()
-        merged.update(default_summary.model_usage_summaries)
-        # Include other backend client if it exists
-        if self.other_backend_client is not None:
-            other_summary = self.other_backend_client.get_usage_summary()
-            merged.update(other_summary.model_usage_summaries)
-        # Include all registered clients
         for client in self.clients.values():
             client_summary = client.get_usage_summary()
             merged.update(client_summary.model_usage_summaries)

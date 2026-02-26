@@ -31,6 +31,10 @@ class AnthropicClient(BaseLM):
         self.model_output_tokens: dict[str, int] = defaultdict(int)
         self.model_total_tokens: dict[str, int] = defaultdict(int)
 
+        # Last call tracking (initialized to 0 to avoid AttributeError before first call)
+        self.last_prompt_tokens = 0
+        self.last_completion_tokens = 0
+
     def completion(self, prompt: str | list[dict[str, Any]], model: str | None = None) -> str:
         messages, system = self._prepare_messages(prompt)
 

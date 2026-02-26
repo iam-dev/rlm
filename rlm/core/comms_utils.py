@@ -54,7 +54,7 @@ class LMRequest:
             prompt=data.get("prompt"),
             prompts=data.get("prompts"),
             model=data.get("model"),
-            depth=data.get("depth", -1),  # TODO: Default should throw an error
+            depth=data.get("depth", 0),
         )
 
 
@@ -152,6 +152,10 @@ def socket_send(sock: socket.socket, data: dict) -> None:
     sock.sendall(struct.pack(">I", len(payload)) + payload)
 
 
+# Maximum message size: 100 MB
+MAX_MESSAGE_SIZE = 100 * 1024 * 1024
+
+
 def socket_recv(sock: socket.socket) -> dict:
     """Receive a length-prefixed JSON message from socket.
 
@@ -160,18 +164,24 @@ def socket_recv(sock: socket.socket) -> dict:
 
     Raises:
         ConnectionError: If connection closes mid-message.
+        ValueError: If message exceeds MAX_MESSAGE_SIZE.
     """
     raw_len = sock.recv(4)
     if not raw_len:
         return {}
 
     length = struct.unpack(">I", raw_len)[0]
-    payload = b""
-    while len(payload) < length:
-        chunk = sock.recv(length - len(payload))
-        if not chunk:
+    if length > MAX_MESSAGE_SIZE:
+        raise ValueError(f"Message size {length} exceeds maximum {MAX_MESSAGE_SIZE}")
+
+    payload = bytearray(length)
+    view = memoryview(payload)
+    received = 0
+    while received < length:
+        chunk_size = sock.recv_into(view[received:])
+        if not chunk_size:
             raise ConnectionError("Connection closed before message complete")
-        payload += chunk
+        received += chunk_size
 
     return json.loads(payload.decode("utf-8"))
 

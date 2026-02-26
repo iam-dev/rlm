@@ -62,9 +62,11 @@ class ClaudeCodeCLI(BaseLM):
         cmd = [
             "claude",
             "--print",
-            "--model", model,
+            "--model",
+            model,
             "--no-session-persistence",
-            "--permission-mode", self.permission_mode,
+            "--permission-mode",
+            self.permission_mode,
         ]
         if system:
             cmd.extend(["--system-prompt", system])
@@ -72,9 +74,7 @@ class ClaudeCodeCLI(BaseLM):
             cmd.extend(["--max-budget-usd", str(self.max_budget_usd)])
         return cmd
 
-    def _prepare_prompt(
-        self, prompt: str | list[dict[str, Any]]
-    ) -> tuple[str, str | None]:
+    def _prepare_prompt(self, prompt: str | list[dict[str, Any]]) -> tuple[str, str | None]:
         """
         Convert a prompt (string or message list) into ``(user_text, system)``
         for piping to ``claude --print``.
@@ -117,9 +117,7 @@ class ClaudeCodeCLI(BaseLM):
 
     # ── BaseLM interface ──────────────────────────────────
 
-    def completion(
-        self, prompt: str | list[dict[str, Any]], model: str | None = None
-    ) -> str:
+    def completion(self, prompt: str | list[dict[str, Any]], model: str | None = None) -> str:
         user_text, system = self._prepare_prompt(prompt)
         model = model or self.model_name
         cmd = self._build_cmd(system, model)

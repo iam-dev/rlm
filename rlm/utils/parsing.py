@@ -105,11 +105,6 @@ def format_iteration(
     return messages
 
 
-################
-# TODO: Remove and refactor these soon
-################
-
-
 def format_execution_result(result: REPLResult) -> str:
     """
     Format the execution result as a string for display.
@@ -125,28 +120,26 @@ def format_execution_result(result: REPLResult) -> str:
     if result.stderr:
         result_parts.append(f"\n{result.stderr}")
 
-    # Show some key variables (excluding internal ones)
+    # Show some key variables with truncated values (excluding internal ones)
     important_vars = {}
+    max_repr_len = 200
     for key, value in result.locals.items():
         if not key.startswith("_") and key not in [
             "__builtins__",
             "__name__",
             "__doc__",
         ]:
-            # Only show simple types or short representations
             if isinstance(value, (str, int, float, bool, list, dict, tuple)):
-                important_vars[key] = ""
+                value_repr = repr(value)
+                if len(value_repr) > max_repr_len:
+                    value_repr = value_repr[:max_repr_len] + "..."
+                important_vars[key] = value_repr
 
     if important_vars:
-        result_parts.append(f"REPL variables: {list(important_vars.keys())}\n")
+        var_lines = [f"  {k} = {v}" for k, v in important_vars.items()]
+        result_parts.append("REPL variables:\n" + "\n".join(var_lines) + "\n")
 
     return "\n\n".join(result_parts) if result_parts else "No output"
-
-
-def check_for_final_answer(response: str, repl_env, logger) -> str | None:
-    """Check if response contains a final answer."""
-    # Use the new find_final_answer function which handles both FINAL and FINAL_VAR
-    return find_final_answer(response, environment=repl_env)
 
 
 def convert_context_for_repl(context):

@@ -56,10 +56,13 @@ class TestBuildCmd:
     def test_basic_cmd(self, cli_client):
         cmd = cli_client._build_cmd(system=None, model="sonnet")
         assert cmd == [
-            "claude", "--print",
-            "--model", "sonnet",
+            "claude",
+            "--print",
+            "--model",
+            "sonnet",
             "--no-session-persistence",
-            "--permission-mode", "bypassPermissions",
+            "--permission-mode",
+            "bypassPermissions",
         ]
 
     def test_with_system_prompt(self, cli_client):
@@ -200,7 +203,11 @@ class TestAcompletion:
         mock_proc.returncode = 0
         mock_proc.communicate = AsyncMock(return_value=(b"Hello async!", b""))
 
-        with patch("rlm.clients.claude_cli.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "rlm.clients.claude_cli.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            return_value=mock_proc,
+        ):
             result = asyncio.run(cli_client.acompletion("Say hello"))
 
         assert result == "Hello async!"
@@ -210,7 +217,11 @@ class TestAcompletion:
         mock_proc.returncode = 1
         mock_proc.communicate = AsyncMock(return_value=(b"", b"async error"))
 
-        with patch("rlm.clients.claude_cli.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "rlm.clients.claude_cli.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            return_value=mock_proc,
+        ):
             with pytest.raises(RuntimeError, match="claude CLI exited with code 1"):
                 asyncio.run(cli_client.acompletion("test"))
 
@@ -219,7 +230,11 @@ class TestAcompletion:
         mock_proc.returncode = 0
         mock_proc.communicate = AsyncMock(return_value=(b"async response", b""))
 
-        with patch("rlm.clients.claude_cli.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        with patch(
+            "rlm.clients.claude_cli.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            return_value=mock_proc,
+        ):
             asyncio.run(cli_client.acompletion("async input"))
 
         assert cli_client.model_call_counts["sonnet"] == 1
