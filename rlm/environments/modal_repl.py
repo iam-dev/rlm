@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import textwrap
 import threading
 import time
@@ -176,13 +177,13 @@ def llm_query_batched(prompts, model=None):
 # State Management
 # =============================================================================
 
-STATE_FILE = "/tmp/rlm_state.dill"
+STATE_FILE = "/tmp/rlm_state.json"
 
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
-            with open(STATE_FILE, "rb") as f:
-                return dill.load(f)
+            with open(STATE_FILE, "r") as f:
+                return json.load(f)
         except:
             pass
     return {{}}
@@ -193,12 +194,12 @@ def save_state(state):
         if k.startswith("_"):
             continue
         try:
-            dill.dumps(v)
+            json.dumps(v)
             clean_state[k] = v
-        except:
+        except (TypeError, ValueError):
             pass
-    with open(STATE_FILE, "wb") as f:
-        dill.dump(clean_state, f)
+    with open(STATE_FILE, "w") as f:
+        json.dump(clean_state, f)
 
 def serialize_locals(state):
     result = {{}}
@@ -393,7 +394,7 @@ class ModalREPL(IsolatedEnv):
             except requests.exceptions.RequestException:
                 pass
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("Broker poll error", exc_info=True)
 
             time.sleep(0.1)
 
@@ -438,12 +439,12 @@ class ModalREPL(IsolatedEnv):
     def load_context(self, context_payload: dict | list | str):
         """Load context into the sandbox environment."""
         if isinstance(context_payload, str):
-            escaped = context_payload.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
-            context_code = f'context = """{escaped}"""'
+            payload_b64 = base64.b64encode(context_payload.encode()).decode()
+            context_code = f"import base64; context = base64.b64decode('{payload_b64}').decode()"
         else:
             context_json = json.dumps(context_payload)
-            escaped_json = context_json.replace("\\", "\\\\").replace("'", "\\'")
-            context_code = f"import json; context = json.loads('{escaped_json}')"
+            payload_b64 = base64.b64encode(context_json.encode()).decode()
+            context_code = f"import base64, json; context = json.loads(base64.b64decode('{payload_b64}').decode())"
 
         self.execute_code(context_code)
 

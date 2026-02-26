@@ -101,7 +101,7 @@ except ImportError:
     import pickle as dill
 
 PROXY = "http://host.docker.internal:{proxy_port}"
-STATE = "/workspace/state.dill"
+STATE = "/workspace/state.json"
 
 def llm_query(prompt, model=None):
     try:
@@ -122,21 +122,24 @@ def llm_query_batched(prompts, model=None):
 def load_state():
     if os.path.exists(STATE):
         try:
-            with open(STATE, "rb") as f:
-                return dill.load(f)
+            with open(STATE, "r") as f:
+                return json.load(f)
         except:
             pass
     return {{}}
 
 def save_state(s):
-    clean = {{k: v for k, v in s.items() if not k.startswith("_")}}
-    for k in list(clean.keys()):
+    clean = {{}}
+    for k, v in s.items():
+        if k.startswith("_"):
+            continue
         try:
-            dill.dumps(clean[k])
-        except:
-            del clean[k]
-    with open(STATE, "wb") as f:
-        dill.dump(clean, f)
+            json.dumps(v)
+            clean[k] = v
+        except (TypeError, ValueError):
+            pass
+    with open(STATE, "w") as f:
+        json.dump(clean, f)
 
 _locals = load_state()
 
@@ -223,11 +226,14 @@ class DockerREPL(NonIsolatedEnv):
         self._calls_lock = threading.Lock()
 
         self.setup()
-
-        if context_payload:
-            self.load_context(context_payload)
-        if setup_code:
-            self.execute_code(setup_code)
+        try:
+            if context_payload:
+                self.load_context(context_payload)
+            if setup_code:
+                self.execute_code(setup_code)
+        except Exception:
+            self.cleanup()
+            raise
 
     def setup(self):
         """Start the proxy server and Docker container."""
@@ -258,6 +264,16 @@ class DockerREPL(NonIsolatedEnv):
                 f"{self.temp_dir}:/workspace",
                 "--add-host",
                 "host.docker.internal:host-gateway",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--memory",
+                "2g",
+                "--cpus",
+                "2",
+                "--pids-limit",
+                "256",
                 self.image,
                 "tail",
                 "-f",

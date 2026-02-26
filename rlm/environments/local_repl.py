@@ -1,9 +1,9 @@
 import copy
+import importlib
 import io
 import json
 import os
 import shutil
-import sys
 import tempfile
 import threading
 import time
@@ -22,8 +22,64 @@ from rlm.environments.base_env import (
 )
 
 # =============================================================================
-# Safe Builtins
+# Safe Builtins & Import Restrictions
 # =============================================================================
+
+# Modules that LLM-generated code is allowed to import
+_ALLOWED_MODULES = frozenset(
+    {
+        "math",
+        "json",
+        "re",
+        "collections",
+        "itertools",
+        "functools",
+        "string",
+        "datetime",
+        "random",
+        "copy",
+        "operator",
+        "statistics",
+        "decimal",
+        "fractions",
+        "textwrap",
+        "unicodedata",
+        "hashlib",
+        "base64",
+        "typing",
+        "dataclasses",
+        "enum",
+        "abc",
+        "numbers",
+        "bisect",
+        "heapq",
+        "pprint",
+        "io",
+    }
+)
+
+
+def _safe_import(name: str, globals=None, locals=None, fromlist=(), level=0):
+    """Import hook that only allows whitelisted modules."""
+    top_level = name.split(".")[0]
+    if top_level not in _ALLOWED_MODULES:
+        raise ImportError(
+            f"Import of '{name}' is not allowed. Allowed modules: {sorted(_ALLOWED_MODULES)}"
+        )
+    return importlib.import_module(name)
+
+
+def _make_restricted_open(temp_dir: str):
+    """Create an open() wrapper that restricts file access to temp_dir."""
+
+    def _restricted_open(file, mode="r", *args, **kwargs):
+        path = os.path.realpath(os.path.join(temp_dir, str(file)))
+        if not path.startswith(os.path.realpath(temp_dir)):
+            raise PermissionError("File access denied: paths must be under the sandbox directory")
+        return open(path, mode, *args, **kwargs)
+
+    return _restricted_open
+
 
 # Safe builtins - blocks dangerous operations like eval/exec/input
 _SAFE_BUILTINS = {
@@ -86,8 +142,8 @@ _SAFE_BUILTINS = {
     "property": property,
     "staticmethod": staticmethod,
     "classmethod": classmethod,
-    "__import__": __import__,
-    "open": open,
+    "__import__": _safe_import,
+    # open is set per-instance via _make_restricted_open(temp_dir)
     # Exceptions
     "Exception": Exception,
     "BaseException": BaseException,
@@ -175,9 +231,11 @@ class LocalREPL(NonIsolatedEnv):
 
     def setup(self):
         """Setup the environment."""
-        # Create sandboxed globals
+        # Create sandboxed globals with per-instance restricted open
+        builtins = _SAFE_BUILTINS.copy()
+        builtins["open"] = _make_restricted_open(self.temp_dir)
         self.globals: dict[str, Any] = {
-            "__builtins__": _SAFE_BUILTINS.copy(),
+            "__builtins__": builtins,
             "__name__": "__main__",
         }
         self.locals: dict[str, Any] = {}
@@ -316,7 +374,7 @@ class LocalREPL(NonIsolatedEnv):
         return self._llm_query(prompt, model)
 
     def _rlm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
-        """Spawn recursive RLM sub-calls for multiple prompts.
+        """Spawn recursive RLM sub-calls for multiple prompts in parallel.
 
         Each prompt gets its own child RLM for deeper thinking.
         Falls back to llm_query_batched if no recursive capability is configured.
@@ -329,14 +387,27 @@ class LocalREPL(NonIsolatedEnv):
             List of responses in the same order as input prompts.
         """
         if self.subcall_fn is not None:
-            results = []
-            for prompt in prompts:
+            if not prompts:
+                return []
+
+            from concurrent.futures import ThreadPoolExecutor
+
+            def _run_subcall(prompt: str) -> tuple[str, RLMChatCompletion | None]:
                 try:
                     completion = self.subcall_fn(prompt, model)
-                    self._pending_llm_calls.append(completion)
-                    results.append(completion.response)
+                    return completion.response, completion
                 except Exception as e:
-                    results.append(f"Error: RLM query failed - {e}")
+                    return f"Error: RLM query failed - {e}", None
+
+            with ThreadPoolExecutor(max_workers=len(prompts)) as executor:
+                # map() preserves input order
+                ordered_results = list(executor.map(_run_subcall, prompts))
+
+            results: list[str] = []
+            for response, completion in ordered_results:
+                results.append(response)
+                if completion is not None:
+                    self._pending_llm_calls.append(completion)
             return results
 
         # Fall back to plain batched LM call if no recursive capability
@@ -437,15 +508,18 @@ class LocalREPL(NonIsolatedEnv):
 
     @contextmanager
     def _capture_output(self):
-        """Thread-safe context manager to capture stdout/stderr."""
-        with self._lock:
-            old_stdout, old_stderr = sys.stdout, sys.stderr
-            stdout_buf, stderr_buf = io.StringIO(), io.StringIO()
-            try:
-                sys.stdout, sys.stderr = stdout_buf, stderr_buf
-                yield stdout_buf, stderr_buf
-            finally:
-                sys.stdout, sys.stderr = old_stdout, old_stderr
+        """Capture stdout/stderr using per-execution buffers.
+
+        Uses contextlib.redirect_stdout/redirect_stderr to avoid
+        directly mutating the process-global sys.stdout/sys.stderr,
+        which is not thread-safe.
+        """
+        import contextlib
+
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+        with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+            yield stdout_buf, stderr_buf
 
     @contextmanager
     def _temp_cwd(self):
