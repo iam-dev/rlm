@@ -168,6 +168,7 @@ class TestGeminiClientIntegration:
         result = client.completion(messages)
         assert "25" in result
 
+    @pytest.mark.asyncio
     @pytest.mark.skipif(
         not os.environ.get("GEMINI_API_KEY"),
         reason="GEMINI_API_KEY not set",
